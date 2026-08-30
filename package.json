@@ -1,0 +1,13 @@
+{
+  "name": "jellyfx-ai-trader",
+  "version": "1.0.0",
+  "description": "JellyFX AI Trader web service",
+  "main": "server.js",
+  "scripts": {
+    "build": "echo 'No build step required'",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
