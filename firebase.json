@@ -1,0 +1,6 @@
+
+{
+  "database": {
+    "rules": "src/database.rules.json"
+  }
+}

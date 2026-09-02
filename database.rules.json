@@ -1,0 +1,64 @@
+
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'QdMuAKkPnKWDD7QuLCVjuWQ55M13')",
+        ".write": "auth != null && (auth.uid === $uid || auth.uid === 'QdMuAKkPnKWDD7QuLCVjuWQ55M13')"
+      }
+    },
+    "wallets": {
+      "$uid": {
+        ".read": "auth != null && ($uid === auth.uid || auth.uid === 'QdMuAKkPnKWDD7QuLCVjuWQ55M13')",
+        ".write": "auth != null && (auth.uid === $uid || auth.uid === 'QdMuAKkPnKWDD7QuLCVjuWQ55M13')"
+      }
+    },
+    "transactions": {
+      "$uid": {
+        ".read": "auth != null && ($uid === auth.uid || auth.uid === 'QdMuAKkPnKWDD7QuLCVjuWQ55M13')",
+        ".write": "auth != null && ($uid === auth.uid || auth.uid === 'QdMuAKkPnKWDD7QuLCVjuWQ55M13')"
+      }
+    },
+    "notifications": {
+      ".write": "auth != null",
+      "$uid": {
+        ".read": "auth != null && $uid === auth.uid"
+      }
+    },
+    "surveys": {
+      "available": {
+        ".read": "auth != null"
+      }
+    },
+    "aiFeedback": {
+      ".read": "auth != null && auth.uid === 'QdMuAKkPnKWDD7QuLCVjuWQ55M13'",
+      ".write": "auth != null"
+    },
+    "contactMessages": {
+      ".read": "auth != null && auth.uid === 'QdMuAKkPnKWDD7QuLCVjuWQ55M13'",
+      ".write": "auth != null"
+    },
+    "teamTrees": {
+        "$uid": {
+            ".read": "auth != null && ($uid === auth.uid || auth.uid === 'QdMuAKkPnKWDD7QuLCVjuWQ55M13')",
+            ".write": "auth != null && ($uid === auth.uid || auth.uid === 'QdMuAKkPnKWDD7QuLCVjuWQ55M13')"
+        }
+    },
+    "referralStats": {
+        "$uid": {
+            ".read": "auth != null && ($uid === auth.uid || auth.uid === 'QdMuAKkPnKWDD7QuLCVjuWQ55M13')",
+            ".write": "auth != null && (auth.uid === $uid || auth.uid === 'QdMuAKkPnKWDD7QuLCVjuWQ55M13')"
+        }
+    },
+    "admin": {
+      "sentNotifications": {
+        ".read": "auth != null && auth.uid === 'QdMuAKkPnKWDD7QuLCVjuWQ55M13'",
+        ".write": "auth != null && auth.uid === 'QdMuAKkPnKWDD7QuLCVjuWQ55M13'"
+      }
+    },
+    "activityLogs": {
+      ".read": "auth != null && auth.uid === 'QdMuAKkPnKWDD7QuLCVjuWQ55M13'",
+      ".write": "auth != null"
+    }
+  }
+}
