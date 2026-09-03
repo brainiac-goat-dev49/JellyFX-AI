@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,25 +7,13 @@ import { ShieldCheck, Wallet, ArrowRight, Lock, Zap } from 'lucide-react';
 
 export default function WelcomePage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const hasVisited = localStorage.getItem('capwallet_welcome_seen');
-    if (hasVisited) {
-      router.replace('/login');
-    } else {
-      setLoading(false);
-    }
-  }, [router]);
 
   const handleGetStarted = () => {
-    localStorage.setItem('capwallet_welcome_seen', 'true');
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('capwallet_welcome_seen', 'true');
+    }
     router.push('/signup');
   };
-
-  if (loading) {
-    return null;
-  }
 
   const features = [
     {
