@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -13,6 +12,8 @@ import { Header } from '@/components/dashboard/header';
 import { Loader2 } from 'lucide-react';
 import { UserContext } from '@/hooks/use-user';
 import { DashboardStateProvider } from '@/hooks/use-dashboard-state';
+import { AiChatPanel } from '@/components/dashboard/ai-chat-panel';
+import { NotificationMobileSheet } from '@/components/dashboard/notification-popover';
 import { ImpersonationBanner } from '@/components/dashboard/impersonation-banner';
 
 export default function AccountLayout({
@@ -29,12 +30,16 @@ export default function AccountLayout({
   useEffect(() => {
     const impersonatedUserJson = sessionStorage.getItem('impersonating_user');
     if (impersonatedUserJson) {
-      const impersonatedUser = JSON.parse(impersonatedUserJson);
-      setUser(impersonatedUser);
-      setFirebaseUser(null);
-      setLoading(false);
-      setIsImpersonating(true);
-      return;
+      try {
+        const impersonatedUser = JSON.parse(impersonatedUserJson);
+        setUser(impersonatedUser);
+        setFirebaseUser(null);
+        setLoading(false);
+        setIsImpersonating(true);
+        return;
+      } catch (e) {
+        // ignore
+      }
     }
     setIsImpersonating(false);
 
@@ -50,30 +55,33 @@ export default function AccountLayout({
 
   useEffect(() => {
     if (isImpersonating || !firebaseUser) {
-      if (!isImpersonating) setLoading(false);
+      if (!isImpersonating && !firebaseUser) setLoading(false);
       return;
     }
 
     const userDocRef = doc(db, 'users', firebaseUser.uid);
-    const unsubscribeSnapshot = onSnapshot(userDocRef, (doc) => {
-      if (doc.exists()) {
-        setUser({ uid: firebaseUser.uid, ...doc.data() } as User);
-      } else {
-        setUser(null);
-        auth.signOut();
-        router.replace('/login');
-      }
-      setLoading(false);
-    }, (error) => {
-        console.error("Snapshot listener error:", error);
+    const unsubscribeSnapshot = onSnapshot(
+      userDocRef,
+      (doc) => {
+        if (doc.exists()) {
+          setUser({ uid: firebaseUser.uid, ...doc.data() } as User);
+        } else {
+          setUser(null);
+          auth.signOut();
+          router.replace('/login');
+        }
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Snapshot listener error:', error);
         setUser(null);
         setLoading(false);
         router.replace('/login');
-    });
-    
+      }
+    );
+
     return () => unsubscribeSnapshot();
   }, [firebaseUser, router, isImpersonating]);
-
 
   if (loading) {
     return (
@@ -84,25 +92,25 @@ export default function AccountLayout({
   }
 
   if (!user) {
-    // This state is brief, as the effects will redirect.
-    // It prevents rendering the layout for a moment before the redirect happens.
     return null;
   }
 
   return (
     <UserContext.Provider value={user}>
-     <DashboardStateProvider>
+      <DashboardStateProvider>
         {isImpersonating && <ImpersonationBanner />}
         <div className="flex h-screen bg-background">
           <Sidebar />
           <div className="flex flex-1 flex-col overflow-hidden">
             <Header />
-            <main className="flex-1 overflow-y-auto overflow-x-hidden bg-background">
+            <main className="flex-1 overflow-y-auto overflow-x-hidden bg-background pb-20 md:pb-0">
               {children}
             </main>
             <MobileBottomNav />
           </div>
         </div>
+        <AiChatPanel />
+        <NotificationMobileSheet />
       </DashboardStateProvider>
     </UserContext.Provider>
   );
