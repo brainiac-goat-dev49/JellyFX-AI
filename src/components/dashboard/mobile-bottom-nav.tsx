@@ -3,13 +3,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, User } from 'lucide-react';
+import { LayoutDashboard, User, Bot } from 'lucide-react';
 
 export function MobileBottomNav() {
   const pathname = usePathname();
 
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'AI Chat', href: '/dashboard/chat', icon: Bot },
     { name: 'Account', href: '/account', icon: User },
   ];
 

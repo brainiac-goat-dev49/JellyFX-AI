@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, User, LogOut } from 'lucide-react';
+import { LayoutDashboard, User, LogOut, Bot } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 
 export function Sidebar() {
@@ -12,6 +12,7 @@ export function Sidebar() {
 
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'AI Assistant', href: '/dashboard/chat', icon: Bot },
     { name: 'Account', href: '/account', icon: User },
   ];
 

@@ -3,7 +3,8 @@
 import { useUser } from '@/hooks/use-user';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowUpRight, ArrowDownLeft, Send, ShieldCheck, RefreshCw } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Send, ShieldCheck, RefreshCw, Bot, Sparkles, ArrowRight } from 'lucide-react';
+import Link from 'next/link';
 
 export default function DashboardPage() {
   const user = useUser();
@@ -71,6 +72,35 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* AI Assistant Banner */}
+      <Card className="border-accent/30 bg-gradient-to-r from-accent/10 via-secondary/40 to-background shadow-sm overflow-hidden">
+        <CardContent className="p-5 md:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="h-11 w-11 rounded-xl bg-accent text-white flex items-center justify-center font-bold shrink-0 shadow">
+              <Bot className="h-6 w-6" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-base text-foreground">Cap AI Financial Assistant</h3>
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-accent text-white">
+                  Multi-Turn
+                </span>
+              </div>
+              <p className="text-xs md:text-sm text-muted-foreground">
+                Get real-time answers about your wallet, analyze capital allocations, or explore recovery security with Gemini.
+              </p>
+            </div>
+          </div>
+          <Link href="/dashboard/chat">
+            <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 shrink-0 font-medium text-xs">
+              <Sparkles className="h-3.5 w-3.5 text-accent" />
+              Open AI Chat
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </Link>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
