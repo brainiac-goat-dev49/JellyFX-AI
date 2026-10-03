@@ -1,28 +1,22 @@
+
 "use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useForm } from 'react-hook-form';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import {
   Select,
   SelectContent,
@@ -30,552 +24,549 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Checkbox } from '@/components/ui/checkbox';
+import { CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { AuthLayout } from '@/components/auth-layout';
+import { countries } from '@/lib/countries';
+import { CheckCircle, Info, Copy, Loader2, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  setDoc,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { db, auth } from '@/lib/firebase';
-import { Loader2, CheckCircle2, XCircle, Copy, Shield, FileText } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { checkUsernameAvailability, signUpWithEmail, findUserByReferralCode } from '@/services/user';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import { cn } from '@/lib/utils';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { User as UserType } from '@/lib/types';
 
-const COUNTRIES = [
-  { name: "United States", code: "+1" },
-  { name: "United Kingdom", code: "+44" },
-  { name: "Canada", code: "+1" },
-  { name: "Australia", code: "+61" },
-  { name: "Germany", code: "+49" },
-  { name: "France", code: "+33" },
-  { name: "Japan", code: "+81" },
-  { name: "Custom / Other", code: "" },
-];
 
-const signUpSchema = z.object({
-  fullName: z.string().min(2, "Full name must be at least 2 characters."),
-  email: z.string().email("Invalid email address."),
-  username: z.string().min(3, "Username must be at least 3 characters.").regex(/^[a-zA-Z0-9_]+$/, "Only alphanumeric and underscores allowed."),
-  password: z.string().min(6, "Password must be at least 6 characters."),
-  gender: z.string().min(1, "Please select gender."),
+const phoneRegex = new RegExp(
+  /^([+]?[\s0-9]+)?(\d{3}|[(]?[0-9]+[)])?([-]?[\s]?[0-9])+$/
+);
+
+const formSchema = z.object({
+  fullName: z.string().min(2, { message: 'Full name must be at least 2 characters.' }),
+  username: z.string().min(3, { message: 'Username must be at least 3 characters.' }).refine(val => /^[a-zA-Z0-9]+$/.test(val), {
+    message: 'Username can only contain letters and numbers.',
+  }),
+  gender: z.string().min(1, { message: 'Please select a gender.' }),
   customGender: z.string().optional(),
-  country: z.string().min(1, "Please select country."),
+  country: z.string().min(1, { message: 'Please select a country.' }),
   customCountry: z.string().optional(),
-  phoneCode: z.string().optional(),
-  phoneNumber: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().email({ message: 'Please enter a valid email.' }),
   referralCode: z.string().optional(),
-}).superRefine((data, ctx) => {
-  if (data.gender === "custom" && (!data.customGender || data.customGender.trim() === "")) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Please specify your gender.",
-      path: ["customGender"],
-    });
-  }
-  if (data.country === "Custom / Other") {
-    if (!data.customCountry || data.customCountry.trim() === "") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Please enter your country name.",
-        path: ["customCountry"],
-      });
+  password: z.string().min(8, 'Password must be at least 8 characters.')
+    .refine(val => /[A-Z]/.test(val), 'Password must contain an uppercase letter.')
+    .refine(val => /[a-z]/.test(val), 'Password must contain a lowercase letter.')
+    .refine(val => /[0-9]/.test(val), 'Password must contain a number.')
+    .refine(val => /[^a-zA-Z0-9]/.test(val), 'Password must contain a symbol.'),
+  confirmPassword: z.string(),
+}).refine(data => data.gender !== 'Custom' || (data.gender === 'Custom' && data.customGender && data.customGender.length > 0), {
+  message: 'Please specify your gender.',
+  path: ['customGender'],
+}).refine(data => data.country !== 'Custom' || (data.country === 'Custom' && data.customCountry && data.customCountry.length > 0), {
+  message: 'Please specify your country.',
+  path: ['customCountry'],
+}).refine(data => {
+    if (data.country === 'Custom') {
+        return !!data.phone && phoneRegex.test(data.phone);
     }
-    if (!data.phoneNumber || data.phoneNumber.trim() === "") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Phone number is required for custom country.",
-        path: ["phoneNumber"],
-      });
+    if (data.phone && data.phone.trim().length > (countries.find(c => c.code === data.country)?.phone.length ?? 0) + 2) {
+        return phoneRegex.test(data.phone);
     }
-  }
+    return true;
+}, {
+    message: 'A valid phone number is required for custom countries or if provided.',
+    path: ['phone'],
+}).refine(data => data.password === data.confirmPassword, {
+  message: 'Passwords do not match.',
+  path: ['confirmPassword'],
 });
 
-export default function SignUpPage() {
-  const router = useRouter();
-  const { toast } = useToast();
 
-  const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
-  const [isRecoveryModalOpen, setRecoveryModalOpen] = useState(false);
-  const [isTosModalOpen, setTosModalOpen] = useState(false);
-  const [tosAgreed, setTosAgreed] = useState(false);
-  const [generatedToken, setGeneratedToken] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+function SignUpForm() {
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+    const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+    const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
+    const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
+    const [recoveryToken, setRecoveryToken] = useState('');
+    const [tokenCopied, setTokenCopied] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [isGeneratingToken, setIsGeneratingToken] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [authLoading, setAuthLoading] = useState(true);
+    const [referrer, setReferrer] = useState<UserType | null>(null);
+    const [isCheckingReferral, setIsCheckingReferral] = useState(false);
 
-  const form = useForm<z.infer<typeof signUpSchema>>({
-    resolver: zodResolver(signUpSchema),
-    defaultValues: {
-      fullName: '',
-      email: '',
-      username: '',
-      password: '',
-      gender: '',
-      customGender: '',
-      country: '',
-      customCountry: '',
-      phoneCode: '',
-      phoneNumber: '',
-      referralCode: '',
-    },
-  });
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+          if (user) {
+            router.replace('/dashboard');
+          } else {
+            setAuthLoading(false);
+          }
+        });
+        return () => unsubscribe();
+    }, [router]);
 
-  const selectedCountry = form.watch('country');
-  const watchedUsername = form.watch('username');
-  const watchedGender = form.watch('gender');
+    const { toast } = useToast();
 
-  useEffect(() => {
-    if (selectedCountry && selectedCountry !== "Custom / Other") {
-      const match = COUNTRIES.find((c) => c.name === selectedCountry);
-      if (match) {
-        form.setValue('phoneCode', match.code);
-      }
-    } else if (selectedCountry === "Custom / Other") {
-      form.setValue('phoneCode', '');
-    }
-  }, [selectedCountry, form]);
-
-  useEffect(() => {
-    if (!watchedUsername || watchedUsername.length < 3) {
-      setUsernameStatus('idle');
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      setUsernameStatus('checking');
-      try {
-        const q = query(
-          collection(db, 'users'),
-          where('username', '==', watchedUsername.trim().toLowerCase())
-        );
-        const snapshot = await getDocs(q);
-        if (snapshot.empty) {
-          setUsernameStatus('available');
-        } else {
-          setUsernameStatus('taken');
-        }
-      } catch (err) {
-        console.error('Error checking username:', err);
-        setUsernameStatus('idle');
-      }
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [watchedUsername]);
-
-  const generateRecoveryToken = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let token = 'CAP-';
-    for (let i = 0; i < 12; i++) {
-      if (i > 0 && i % 4 === 0) token += '-';
-      token += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return token;
-  };
-
-  const onPreSubmit = (data: z.infer<typeof signUpSchema>) => {
-    if (usernameStatus === 'taken') {
-      toast({
-        title: "Username taken",
-        description: "Please choose a different username.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const token = generateRecoveryToken();
-    setGeneratedToken(token);
-    setRecoveryModalOpen(true);
-  };
-
-  const handleCopyToken = () => {
-    navigator.clipboard.writeText(generatedToken);
-    toast({
-      title: "Copied!",
-      description: "Recovery token copied to clipboard.",
+    const form = useForm<z.infer<typeof formSchema>>({
+        resolver: zodResolver(formSchema),
+        defaultValues: {
+            fullName: '',
+            username: '',
+            gender: '',
+            customGender: '',
+            country: '',
+            customCountry: '',
+            phone: '',
+            email: '',
+            referralCode: '',
+            password: '',
+            confirmPassword: '',
+        },
     });
-  };
 
-  const handleProceedToTos = () => {
-    setRecoveryModalOpen(false);
-    setTosModalOpen(true);
-  };
+    const watchedCountry = useWatch({ control: form.control, name: 'country' });
+    const watchedGender = useWatch({ control: form.control, name: 'gender' });
+    const watchedUsername = useWatch({ control: form.control, name: 'username' });
+    const watchedPassword = useWatch({ control: form.control, name: 'password' });
+    const watchedReferralCode = useWatch({ control: form.control, name: "referralCode" });
 
-  const handleFinalSignUp = async () => {
-    if (!tosAgreed) {
-      toast({
-        title: "Terms of Service Required",
-        description: "Please accept the Terms of Service to create an account.",
-        variant: "destructive",
-      });
-      return;
+    const passwordRequirements = [
+        { id: 'uppercase', text: 'An uppercase letter', regex: /[A-Z]/ },
+        { id: 'lowercase', text: 'A lowercase letter', regex: /[a-z]/ },
+        { id: 'number', text: 'A number', regex: /[0-9]/ },
+        { id: 'symbol', text: 'A symbol', regex: /[^a-zA-Z0-9]/ },
+        { id: 'minlength', text: 'At least 8 characters', regex: /.{8,}/ },
+    ];
+    
+    const checkReferralCode = useCallback(async (code: string) => {
+        if (code && code.length > 5) {
+            setIsCheckingReferral(true);
+            try {
+                const foundReferrer = await findUserByReferralCode(code);
+                setReferrer(foundReferrer);
+                if (!foundReferrer) {
+                    form.setError("referralCode", { type: "manual", message: "Invalid referral code." });
+                } else {
+                    form.clearErrors("referralCode");
+                }
+            } catch (error) {
+                setReferrer(null);
+                form.setError("referralCode", { type: "manual", message: "Error checking code." });
+            } finally {
+                setIsCheckingReferral(false);
+            }
+        } else {
+            setReferrer(null);
+            form.clearErrors("referralCode");
+        }
+    }, [form]);
+
+    useEffect(() => {
+        const refCode = searchParams.get('ref');
+        if (refCode) {
+            form.setValue('referralCode', refCode);
+            checkReferralCode(refCode);
+        }
+    }, [searchParams, form, checkReferralCode]);
+
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            if (watchedReferralCode) {
+                checkReferralCode(watchedReferralCode);
+            }
+        }, 1000);
+
+        return () => clearTimeout(handler);
+    }, [watchedReferralCode, checkReferralCode]);
+
+
+    useEffect(() => {
+        if (watchedCountry) {
+            const countryData = countries.find(c => c.code === watchedCountry);
+            if (countryData) {
+                form.setValue('phone', `+${countryData.phone} `);
+            } else {
+                form.setValue('phone', '');
+            }
+        }
+    }, [watchedCountry, form]);
+
+    useEffect(() => {
+        const username = form.getValues('username');
+        if (!username || username.length < 3) {
+          setUsernameAvailable(null);
+          return;
+        }
+    
+        setIsCheckingUsername(true);
+        setUsernameAvailable(null);
+        const handler = setTimeout(async () => {
+          try {
+            const isAvailable = await checkUsernameAvailability(username);
+            setUsernameAvailable(isAvailable);
+            if (isAvailable) {
+              form.clearErrors('username');
+            } else {
+              form.setError('username', {
+                type: 'manual',
+                message: 'Username is already taken.',
+              });
+            }
+          } catch(error) {
+             console.error("Error checking username", error)
+             setUsernameAvailable(null);
+          }
+          finally {
+            setIsCheckingUsername(false);
+          }
+        }, 1000);
+    
+        return () => clearTimeout(handler);
+      }, [watchedUsername, form]);
+
+    const handleGenerateToken = () => {
+        setIsTokenModalOpen(true);
+        setIsGeneratingToken(true);
+        setTimeout(() => {
+            const generatedToken = 'CW-' + [...Array(10)].map(() => Math.random().toString(36)[2]).join('');
+            setRecoveryToken(generatedToken);
+            setIsGeneratingToken(false);
+        }, 1500);
+    };
+    
+    function copyToClipboard(text: string) {
+        navigator.clipboard.writeText(text);
+        setTokenCopied(true);
+        toast({
+            title: 'Copied to clipboard!',
+            description: 'Your recovery token has been copied.',
+        });
     }
 
-    setSubmitting(true);
-    const formData = form.getValues();
-
-    try {
-      const userCred = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-      const uid = userCred.user.uid;
-
-      const finalGender = formData.gender === 'custom' ? formData.customGender : formData.gender;
-      const finalCountry = formData.country === 'Custom / Other' ? formData.customCountry : formData.country;
-      const finalPhone = formData.phoneCode
-        ? `${formData.phoneCode} ${formData.phoneNumber || ''}`.trim()
-        : formData.phoneNumber || '';
-
-      await setDoc(doc(db, 'users', uid), {
-        fullName: formData.fullName,
-        username: formData.username.toLowerCase(),
-        email: formData.email,
-        gender: finalGender,
-        country: finalCountry,
-        phone: finalPhone,
-        referralCode: formData.referralCode || null,
-        recoveryToken: generatedToken,
-        photoURL: null,
-        createdAt: serverTimestamp(),
-      });
-
-      toast({
-        title: "Account Created!",
-        description: "Welcome to CapWallet.",
-      });
-
-      setTosModalOpen(false);
-      router.push('/dashboard');
-    } catch (error: any) {
-      console.error('Sign up error:', error);
-      toast({
-        title: "Registration Failed",
-        description: error.message || "Failed to create account. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setSubmitting(false);
+    async function onSubmit(values: z.infer<typeof formSchema>) {
+        if (usernameAvailable === false) {
+          form.setError('username', { type: 'manual', message: 'Username is already taken.' });
+          return;
+        }
+        setIsSubmitting(true);
+        try {
+          await signUpWithEmail(values, recoveryToken);
+    
+          toast({
+            title: 'Account Created!',
+            description: "Please log in to continue.",
+          });
+          router.push('/login');
+        } catch (error: any) {
+          toast({
+            title: 'Sign-up failed',
+            description: error.message || 'An unexpected error occurred.',
+            variant: 'destructive',
+          });
+        } finally {
+          setIsSubmitting(false);
+        }
+      }
+    
+    if (authLoading) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-background">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            </div>
+        );
     }
-  };
+    
+    const getInitials = (name: string | undefined) => {
+        if (!name) return 'U';
+        const names = name.split(' ');
+        if (names.length > 1) {
+            return `${names[0][0]}${names[1][0]}`.toUpperCase();
+        }
+        return name.substring(0, 2).toUpperCase();
+    }
 
-  return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 md:p-8">
-      <Card className="max-w-xl w-full border-border/60 shadow-xl my-8">
-        <CardHeader className="text-center bg-primary text-primary-foreground rounded-t-xl py-6">
-          <div className="h-12 w-12 rounded-xl bg-accent flex items-center justify-center text-white font-bold text-2xl mx-auto mb-2">
-            C
-          </div>
-          <CardTitle className="text-2xl font-bold">Create CapWallet Account</CardTitle>
-          <CardDescription className="text-accent-foreground text-xs">
-            Join thousands managing capital with security and clarity.
-          </CardDescription>
-        </CardHeader>
+    return (
+        <AuthLayout>
+             {referrer && (
+                <div className="flex items-center gap-2 p-3 bg-accent/20 text-accent-foreground rounded-t-lg border-b">
+                    <Avatar className="h-8 w-8">
+                        <AvatarImage src={referrer.photoURL || ''} alt={referrer.fullName} />
+                        <AvatarFallback>{getInitials(referrer.fullName)}</AvatarFallback>
+                    </Avatar>
+                    <p className="text-sm">
+                        Referred by <span className="font-semibold">{referrer.fullName}</span>
+                    </p>
+                </div>
+            )}
+            <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)}>
+                    <CardHeader className="p-6">
+                        <CardTitle className="text-2xl font-bold">Create your account</CardTitle>
+                        <CardDescription>Enter your details below to get started.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-6 pt-0 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormField control={form.control} name="fullName" render={({ field }) => (
+                            <FormItem className="md:col-span-2">
+                                <FormLabel>Full Name</FormLabel>
+                                <FormControl><Input placeholder="John Doe" {...field} /></FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )} />
 
-        <CardContent className="p-6 md:p-8">
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onPreSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="fullName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Full Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="John Doe" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                        <FormField control={form.control} name="username" render={({ field }) => (
+                            <FormItem className="md:col-span-2">
+                                <FormLabel>Username</FormLabel>
+                                <FormControl>
+                                    <div className="relative">
+                                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-muted-foreground">@</span>
+                                        <Input placeholder="johndoe123" {...field} className="pl-7" />
+                                        <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                                        {isCheckingUsername ? (<Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />) : 
+                                        usernameAvailable === true && watchedUsername.length >= 3 ? (<CheckCircle className="h-4 w-4 text-green-500" />) :
+                                        usernameAvailable === false && watchedUsername.length >= 3 ? (<Info className="h-4 w-4 text-destructive" />) : null
+                                        }
+                                        </div>
+                                    </div>
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )} />
 
-              <FormField
-                control={form.control}
-                name="username"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Username</FormLabel>
-                    <FormControl>
-                      <div className="relative">
-                        <Input placeholder="johndoe123" {...field} />
-                        <div className="absolute right-3 top-2.5 flex items-center">
-                          {usernameStatus === 'checking' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-                          {usernameStatus === 'available' && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-                          {usernameStatus === 'taken' && <XCircle className="h-4 w-4 text-destructive" />}
+                        <FormField control={form.control} name="gender" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Gender</FormLabel>
+                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                    <FormControl><SelectTrigger><SelectValue placeholder="Select a gender" /></SelectTrigger></FormControl>
+                                    <SelectContent>
+                                        <SelectItem value="Male">Male</SelectItem>
+                                        <SelectItem value="Female">Female</SelectItem>
+                                        <SelectItem value="Custom">Custom</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <FormMessage />
+                            </FormItem>
+                        )} />
+                        
+                        {watchedGender === 'Custom' && (
+                            <FormField control={form.control} name="customGender" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Specify Gender</FormLabel>
+                                    <FormControl><Input placeholder="Your gender" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )} />
+                        )}
+
+                        <FormField control={form.control} name="country" render={({ field }) => (
+                            <FormItem className={watchedCountry === 'Custom' ? '' : 'md:col-span-2'}>
+                                <FormLabel>Country</FormLabel>
+                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                    <FormControl><SelectTrigger><SelectValue placeholder="Select a country" /></SelectTrigger></FormControl>
+                                    <SelectContent>
+                                        {countries.map(c => <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>)}
+                                        <SelectItem value="Custom">Not in list</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <FormMessage />
+                            </FormItem>
+                        )} />
+
+                        {watchedCountry === 'Custom' && (
+                            <FormField control={form.control} name="customCountry" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Specify Country</FormLabel>
+                                    <FormControl><Input placeholder="Your country" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )} />
+                        )}
+
+                        <FormField control={form.control} name="phone" render={({ field }) => {
+                            const isCustomCountry = watchedCountry === 'Custom';
+
+                            return (
+                                <FormItem>
+                                    <FormLabel>Phone Number {watchedCountry !== 'Custom' && <span className="text-muted-foreground">(Optional)</span>}</FormLabel>
+                                    <FormControl>
+                                        <Input type="tel" placeholder="+1 123 456 7890" {...field} />
+                                    </FormControl>
+                                    {isCustomCountry && <FormDescription>Phone number is required for custom countries.</FormDescription>}
+                                    <FormMessage />
+                                </FormItem>
+                            )
+                        }}/>
+
+                        <FormField control={form.control} name="email" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Email</FormLabel>
+                                <FormControl><Input type="email" placeholder="you@example.com" {...field} /></FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )} />
+                        
+                        <FormField control={form.control} name="password" render={({ field }) => (
+                            <FormItem className="md:col-span-2">
+                                <FormLabel>Password</FormLabel>
+                                <FormControl>
+                                    <div className="relative">
+                                        <Input type={showPassword ? 'text' : 'password'} placeholder="••••••••" {...field} />
+                                        <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowPassword(!showPassword)}>
+                                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                        </Button>
+                                    </div>
+                                </FormControl>
+                                <FormMessage />
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mt-2">
+                                    {passwordRequirements.map(req => (
+                                        <div key={req.id} className={`flex items-center gap-2 ${watchedPassword && req.regex.test(watchedPassword) ? 'text-green-500' : 'text-muted-foreground'}`}>
+                                            {watchedPassword && req.regex.test(watchedPassword) ? <CheckCircle className="h-3 w-3" /> : <Info className="h-3 w-3" />}
+                                            <span>{req.text}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </FormItem>
+                        )} />
+
+                        <FormField control={form.control} name="confirmPassword" render={({ field }) => (
+                            <FormItem className="md:col-span-2">
+                                <FormLabel>Confirm Password</FormLabel>
+                                <FormControl>
+                                    <div className="relative">
+                                        <Input type={showConfirmPassword ? 'text' : 'password'} placeholder="••••••••" {...field} />
+                                        <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
+                                            {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                        </Button>
+                                    </div>
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )} />
+
+                        <div className="md:col-span-2 space-y-2">
+                            <FormLabel>Recovery Token</FormLabel>
+                            <Button type="button" variant="outline" className="w-full justify-center" onClick={handleGenerateToken} disabled={!!recoveryToken}>
+                                {recoveryToken ? 'Token Generated' : 'Generate & Save Your Recovery Token'}
+                            </Button>
+                            <FormDescription>This token is crucial for account recovery. Store it in a safe place.</FormDescription>
                         </div>
-                      </div>
-                    </FormControl>
-                    {usernameStatus === 'available' && (
-                      <p className="text-xs text-emerald-600 font-medium">Username is available!</p>
+
+                        <FormField control={form.control} name="referralCode" render={({ field }) => (
+                            <FormItem className="md:col-span-2">
+                                <FormLabel>Referral Code (Optional)</FormLabel>
+                                <FormControl><Input placeholder="Enter referral code" {...field} /></FormControl>
+                                {isCheckingReferral && <p className="text-sm text-muted-foreground">Checking code...</p>}
+                                <FormMessage />
+                            </FormItem>
+                        )} />
+
+                         <div className="md:col-span-2 text-center text-sm text-muted-foreground">
+                            By creating an account, you agree to our{' '}
+                            <Button
+                                type="button"
+                                variant="link"
+                                className="p-0 h-auto align-baseline"
+                                onClick={() => setIsTermsModalOpen(true)}
+                            >
+                                Terms of Service
+                            </Button>
+                            .
+                        </div>
+
+                    </CardContent>
+                    <CardFooter className="p-6 pt-0 flex flex-col items-center gap-4">
+                        <Button type="submit" className="w-full" disabled={!recoveryToken || isSubmitting || isCheckingUsername || usernameAvailable === false}>
+                            {isSubmitting ? <Loader2 className="animate-spin" /> : 'Create Account'}
+                        </Button>
+                        <p className="text-center text-sm text-muted-foreground">
+                            Already have an account?{' '}
+                            <Link href="/login" className="font-semibold text-primary hover:underline">Login</Link>
+                        </p>
+                    </CardFooter>
+                </form>
+            </Form>
+            
+            <Dialog open={isTokenModalOpen} onOpenChange={isGeneratingToken ? () => {} : setIsTokenModalOpen}>
+                <DialogContent showCloseButton={false} onPointerDownOutside={(e) => (isGeneratingToken || !tokenCopied) && e.preventDefault()} onEscapeKeyDown={(e) => (isGeneratingToken || !tokenCopied) && e.preventDefault()}>
+                    <DialogHeader>
+                        <DialogTitle>Your Recovery Token</DialogTitle>
+                        <DialogDescription>
+                            Please save this token. You will need it to recover your account if you lose your password.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {isGeneratingToken ? (
+                        <div className="flex items-center justify-center h-24">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        </div>
+                    ) : (
+                        <>
+                            <Alert variant="destructive">
+                                <Info className="h-4 w-4" />
+                                <AlertTitle>Warning</AlertTitle>
+                                <AlertDescription>
+                                    Do not share this token with anyone. We will never ask for it. This is the only time you will see it.
+                                </AlertDescription>
+                            </Alert>
+                            <div className="relative rounded-md bg-muted p-4 font-mono text-sm break-all">
+                                {recoveryToken}
+                                <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-7 w-7" onClick={() => copyToClipboard(recoveryToken)}>
+                                    <Copy className="h-4 w-4"/>
+                                </Button>
+                            </div>
+                        </>
                     )}
-                    {usernameStatus === 'taken' && (
-                      <p className="text-xs text-destructive font-medium">Username is already taken.</p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                    <DialogFooter>
+                        <Button onClick={() => setIsTokenModalOpen(false)} disabled={!tokenCopied}>I have copied my token</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email Address</FormLabel>
-                    <FormControl>
-                      <Input type="email" placeholder="john@example.com" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <Dialog open={isTermsModalOpen} onOpenChange={setIsTermsModalOpen}>
+                <DialogContent className="max-w-3xl">
+                    <DialogHeader>
+                        <DialogTitle>Terms of Service</DialogTitle>
+                        <p className="text-sm text-muted-foreground pt-1">Last updated: Aug 12, 2025</p>
+                    </DialogHeader>
+                     <div className="space-y-4 max-h-[60vh] overflow-y-auto p-1 pr-4 text-sm text-muted-foreground">
+                        <p>Welcome to CapWallet! These terms and conditions outline the rules and regulations for the use of CapWallet&apos;s Website, located at capwallet.web.app.</p>
+                        <p>By accessing this website we assume you accept these terms and conditions. Do not continue to use CapWallet if you do not agree to take all of the terms and conditions stated on this page.</p>
+                        <h4 className="font-semibold text-card-foreground mt-4 mb-2">License</h4>
+                        <p>Unless otherwise stated, CapWallet and/or its licensors own the intellectual property rights for all material on CapWallet. All intellectual property rights are reserved. You may access this from CapWallet for your own personal use subjected to restrictions set in these terms and conditions.</p>
+                        <h4 className="font-semibold text-card-foreground mt-4 mb-2">You must not:</h4>
+                        <ul className="list-disc list-inside space-y-1">
+                            <li>Republish material from CapWallet</li>
+                            <li>Sell, rent or sub-license material from CapWallet</li>
+                            <li>Reproduce, duplicate or copy material from CapWallet</li>
+                            <li>Redistribute content from CapWallet</li>
+                        </ul>
+                        <p>This Agreement shall begin on the date hereof.</p>
+                        <p>Parts of this website offer an opportunity for users to post and exchange opinions and information in certain areas of the website. CapWallet does not filter, edit, publish or review Comments prior to their presence on the website. Comments do not reflect the views and opinions of CapWallet,its agents and/or affiliates. Comments reflect the views and opinions of the person who post their views and opinions. To the extent permitted by applicable laws, CapWallet shall not be liable for the Comments or for any liability, damages or expenses caused and/or suffered as a result of any use of and/or posting of and/or appearance of the Comments on this website.</p>
+                        <p>You can find our full terms at <a href="https://capwallet/terms-of-services.web.app" target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline">https://capwallet/terms-of-services.web.app</a>.</p>
+                    </div>
+                    <DialogFooter>
+                        <Button onClick={() => setIsTermsModalOpen(false)}>I Understand</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </AuthLayout>
+    );
+}
 
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Gender selection */}
-              <FormField
-                control={form.control}
-                name="gender"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Gender</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Gender" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="Male">Male</SelectItem>
-                        <SelectItem value="Female">Female</SelectItem>
-                        <SelectItem value="Non-binary">Non-binary</SelectItem>
-                        <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
-                        <SelectItem value="custom">Custom / Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {watchedGender === 'custom' && (
-                <FormField
-                  control={form.control}
-                  name="customGender"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Specify Gender</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Enter gender" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
-
-              {/* Country dropdown */}
-              <FormField
-                control={form.control}
-                name="country"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Country</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Country" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {COUNTRIES.map((c) => (
-                          <SelectItem key={c.name} value={c.name}>
-                            {c.name} {c.code ? `(${c.code})` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {selectedCountry === 'Custom / Other' && (
-                <FormField
-                  control={form.control}
-                  name="customCountry"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Custom Country Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Enter country name" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
-
-              {/* Phone number */}
-              <div className="grid grid-cols-3 gap-2">
-                <FormField
-                  control={form.control}
-                  name="phoneCode"
-                  render={({ field }) => (
-                    <FormItem className="col-span-1">
-                      <FormLabel>Code</FormLabel>
-                      <FormControl>
-                        <Input placeholder="+1" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="phoneNumber"
-                  render={({ field }) => (
-                    <FormItem className="col-span-2">
-                      <FormLabel>Phone Number</FormLabel>
-                      <FormControl>
-                        <Input placeholder="555-0199" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              {/* Referral Code */}
-              <FormField
-                control={form.control}
-                name="referralCode"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Referral Code (Optional)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="REF-12345" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <Button type="submit" className="w-full mt-6 bg-primary font-semibold" size="lg">
-                Continue Account Setup
-              </Button>
-            </form>
-          </Form>
-
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            Already have an account?{' '}
-            <Link href="/login" className="text-primary font-semibold hover:underline">
-              Log In
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Recovery Token Modal */}
-      <Dialog open={isRecoveryModalOpen} onOpenChange={setRecoveryModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <div className="flex items-center gap-2 text-primary">
-              <Shield className="h-6 w-6" />
-              <DialogTitle>Your Secret Recovery Token</DialogTitle>
+export default function SignUpPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex h-screen items-center justify-center bg-background">
+                <Loader2 className="h-12 w-12 animate-spin text-primary" />
             </div>
-            <DialogDescription>
-              Please save this token in a safe place. You will need it if you forget your password or lose access to your account.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="my-4 p-4 rounded-xl bg-secondary/80 border border-border flex items-center justify-between">
-            <span className="font-mono text-lg font-bold tracking-wider text-primary">{generatedToken}</span>
-            <Button size="icon" variant="ghost" onClick={handleCopyToken}>
-              <Copy className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button onClick={handleProceedToTos} className="w-full bg-primary font-semibold">
-              I Have Saved My Recovery Token
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Terms of Service Modal */}
-      <Dialog open={isTosModalOpen} onOpenChange={setTosModalOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <div className="flex items-center gap-2 text-primary">
-              <FileText className="h-6 w-6" />
-              <DialogTitle>Terms of Service & Rules</DialogTitle>
-            </div>
-            <DialogDescription>
-              Review and agree to CapWallet terms before completing registration.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="my-4 max-h-60 overflow-y-auto text-sm text-muted-foreground space-y-3 p-4 rounded-lg bg-secondary/30 border border-border">
-            <p><strong>1. Account Security:</strong> You are responsible for maintaining confidentiality over your password and recovery token.</p>
-            <p><strong>2. Authorized Transactions:</strong> All capital transfers executed through your account are binding.</p>
-            <p><strong>3. Privacy:</strong> We collect essential data to verify user identities and maintain platform security.</p>
-            <p>
-              Full document available at:{' '}
-              <a
-                href="https://capwallet/terms-of-services.web.app"
-                target="_blank"
-                rel="noreferrer"
-                className="text-accent font-semibold underline"
-              >
-                https://capwallet/terms-of-services.web.app
-              </a>
-            </p>
-          </div>
-
-          <div className="flex items-center space-x-2 py-2">
-            <Checkbox
-              id="tos"
-              checked={tosAgreed}
-              onCheckedChange={(checked) => setTosAgreed(!!checked)}
-            />
-            <label htmlFor="tos" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-              I agree to the CapWallet Terms of Service
-            </label>
-          </div>
-
-          <DialogFooter>
-            <Button
-              onClick={handleFinalSignUp}
-              disabled={!tosAgreed || submitting}
-              className="w-full bg-primary font-semibold"
-            >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Create Account
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+        }>
+            <SignUpForm />
+        </Suspense>
+    );
 }

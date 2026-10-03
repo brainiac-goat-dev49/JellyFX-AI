@@ -1,20 +1,29 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getDatabase } from 'firebase/database';
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "demo-key",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "capwallet.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "capwallet-app",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "capwallet-app.appspot.com",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "123456789",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:123456789:web:123456",
+  apiKey: "AIzaSyDlelxJtrg4K9VqdULYc1WG2eW935qhMRk",
+  authDomain: "capwalletapp.firebaseapp.com",
+  databaseURL: "https://capwalletapp-default-rtdb.firebaseio.com",
+  projectId: "capwalletapp",
+  storageBucket: "capwalletapp.firebasestorage.app",
+  messagingSenderId: "410003915551",
+  appId: "1:410003915551:web:6b9079e41f2ed74c48a62a",
+  measurementId: "G-SBX4G5QLCT"
 };
 
+// **IMPORTANT**: Replace this with the actual UID of your designated admin user from Firebase Authentication.
+// You can find the UID in the Firebase Console under Authentication > Users.
+export const ADMIN_UID: string = "QdMuAKkPnKWDD7QuLCVjuWQ55M13";
+
+
+// Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
+const rtdb = getDatabase(app);
 
-export const ADMIN_UID = process.env.NEXT_PUBLIC_ADMIN_UID || "admin_uid_placeholder";
-
-export { app, auth, db };
+export { app, auth, db, rtdb };

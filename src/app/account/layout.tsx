@@ -12,7 +12,7 @@ import { MobileBottomNav } from '@/components/dashboard/mobile-bottom-nav';
 import { Header } from '@/components/dashboard/header';
 import { Loader2 } from 'lucide-react';
 import { UserContext } from '@/hooks/use-user';
-import { DashboardStateProvider } from '@/hooks/use-dashboard-state.tsx';
+import { DashboardStateProvider } from '@/hooks/use-dashboard-state';
 import { ImpersonationBanner } from '@/components/dashboard/impersonation-banner';
 
 export default function AccountLayout({
@@ -70,7 +70,7 @@ export default function AccountLayout({
         setLoading(false);
         router.replace('/login');
     });
-
+    
     return () => unsubscribeSnapshot();
   }, [firebaseUser, router, isImpersonating]);
 

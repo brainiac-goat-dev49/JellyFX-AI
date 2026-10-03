@@ -1,11 +1,12 @@
+
 "use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Form,
   FormControl,
@@ -14,156 +15,141 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { CardContent, CardFooter } from '@/components/ui/card';
+import { AuthLayout } from '@/components/auth-layout';
 import { useToast } from '@/hooks/use-toast';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db, auth } from '@/lib/firebase';
-import { Loader2, Lock } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { signInUser } from '@/services/user';
+import { useState, useEffect, useCallback } from 'react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth, ADMIN_UID } from '@/lib/firebase';
 
-const loginSchema = z.object({
-  identifier: z.string().min(1, "Please enter your Email, Username, or Recovery Token."),
-  password: z.string().min(1, "Please enter your password."),
+const formSchema = z.object({
+  identifier: z.string().min(1, { message: 'This field is required.' }),
+  password: z.string().min(1, { message: 'Password is required.' }),
 });
 
 export default function LoginPage() {
-  const router = useRouter();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
 
-  const form = useForm<z.infer<typeof loginSchema>>({
-    resolver: zodResolver(loginSchema),
+  const handleRedirect = useCallback((user: User | null) => {
+    if (user) {
+      if (user.uid === ADMIN_UID) {
+        router.replace('/admin-040806/dashboard');
+      } else {
+        router.replace('/dashboard');
+      }
+    } else {
+      setAuthLoading(false);
+    }
+  }, [router]);
+  
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+        handleRedirect(user);
+    });
+    return () => unsubscribe();
+  }, [handleRedirect]);
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
     defaultValues: {
       identifier: '',
       password: '',
     },
   });
 
-  const onSubmit = async (data: z.infer<typeof loginSchema>) => {
-    setLoading(true);
-    const identifier = data.identifier.trim();
-    const password = data.password;
-
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    setIsSubmitting(true);
     try {
-      let targetEmail = identifier;
-
-      if (!identifier.includes('@')) {
-        const qUsername = query(collection(db, 'users'), where('username', '==', identifier.toLowerCase()));
-        const snapshotUsername = await getDocs(qUsername);
-
-        if (!snapshotUsername.empty) {
-          targetEmail = snapshotUsername.docs[0].data().email;
-        } else {
-          const qToken = query(collection(db, 'users'), where('recoveryToken', '==', identifier));
-          const snapshotToken = await getDocs(qToken);
-
-          if (!snapshotToken.empty) {
-            targetEmail = snapshotToken.docs[0].data().email;
-          } else {
-            toast({
-              title: "Account Not Found",
-              description: "No account found matching that Username or Recovery Token.",
-              variant: "destructive",
-            });
-            setLoading(false);
-            return;
-          }
-        }
-      }
-
-      await signInWithEmailAndPassword(auth, targetEmail, password);
+      const userCredential = await signInUser(values.identifier, values.password);
+      
       toast({
-        title: "Welcome Back!",
-        description: "Successfully logged into CapWallet.",
+        title: 'Login Successful',
       });
-      router.push('/dashboard');
+      
+      // Explicitly trigger redirect after successful login
+      handleRedirect(userCredential.user);
+      
     } catch (error: any) {
-      console.error('Login error:', error);
       toast({
-        title: "Authentication Failed",
-        description: error.message || "Invalid credentials. Please check and try again.",
-        variant: "destructive",
+        title: 'Login Failed',
+        description: error.message || 'Invalid credentials. Please try again.',
+        variant: 'destructive',
       });
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
-  };
+  }
+
+  if (authLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 md:p-8">
-      <Card className="max-w-md w-full border-border/60 shadow-xl">
-        <CardHeader className="text-center bg-primary text-primary-foreground rounded-t-xl py-6">
-          <div className="h-12 w-12 rounded-xl bg-accent flex items-center justify-center text-white font-bold text-2xl mx-auto mb-2">
-            C
-          </div>
-          <CardTitle className="text-2xl font-bold">Log In to CapWallet</CardTitle>
-          <CardDescription className="text-accent-foreground text-xs">
-            Enter your Email, Username, or Recovery Token to proceed.
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent className="p-6 md:p-8 space-y-6">
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="identifier"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email, Username or Recovery Token</FormLabel>
-                    <FormControl>
-                      <Input placeholder="email@domain.com or john_doe" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <div className="flex items-center justify-between">
-                      <FormLabel>Password</FormLabel>
-                      <Link
-                        href="/forgot-password"
-                        className="text-xs text-primary font-medium hover:underline"
-                      >
-                        Forgot password?
-                      </Link>
+    <AuthLayout>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          <CardContent className="p-6 space-y-4">
+            <FormField
+              control={form.control}
+              name="identifier"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email, Username, Phone, or Token</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Enter your credentials" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Password</FormLabel>
+                  <FormControl>
+                     <div className="relative">
+                        <Input type={showPassword ? 'text' : 'password'} placeholder="••••••••" {...field} />
+                        <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowPassword(!showPassword)}>
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
                     </div>
-                    <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <Button type="submit" className="w-full mt-2 bg-primary font-semibold" size="lg" disabled={loading}>
-                {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Lock className="h-4 w-4 mr-2" />}
-                Login
-              </Button>
-            </form>
-          </Form>
-
-          <div className="text-center text-sm text-muted-foreground pt-2 border-t border-border">
-            Don&apos;t have an account?{' '}
-            <Link href="/signup" className="text-primary font-semibold hover:underline">
-              Sign Up Now
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+             <div className="text-right text-sm">
+                <Link href="/forgot-password" className="text-primary hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
+          </CardContent>
+          <CardFooter className="flex flex-col gap-4 p-6 pt-0">
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="animate-spin" /> : 'Login'}
+            </Button>
+            <p className="text-center text-sm text-muted-foreground">
+              Don&apos;t have an account?{' '}
+              <Link href="/signup" className="font-semibold text-primary hover:underline">
+                Sign Up Now
+              </Link>
+            </p>
+          </CardFooter>
+        </form>
+      </Form>
+    </AuthLayout>
   );
 }

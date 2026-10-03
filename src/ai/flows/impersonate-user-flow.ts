@@ -46,7 +46,7 @@ const impersonateUserFlow = ai.defineFlow(
     if (!targetUser) {
         throw new Error('User to impersonate not found.');
     }
-
+    
     // In a real-world scenario with a proper backend (e.g., Firebase Cloud Function),
     // you would use the Firebase Admin SDK here to create a custom token:
     // const customToken = await getAuth(adminApp).createCustomToken(targetUid);

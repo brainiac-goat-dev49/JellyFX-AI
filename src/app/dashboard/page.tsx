@@ -1,149 +1,275 @@
+
 "use client";
 
 import { useUser } from '@/hooks/use-user';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowUpRight, ArrowDownLeft, Send, ShieldCheck, RefreshCw, Bot, Sparkles, ArrowRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { DollarSign, BarChart, CheckSquare, Users, ExternalLink, Loader2 } from 'lucide-react';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import Link from 'next/link';
+import { ref, onValue } from 'firebase/database';
+import { rtdb } from '@/lib/firebase';
+import { format } from 'date-fns';
+import { Skeleton } from '@/components/ui/skeleton';
+import { logActivity } from '@/services/user';
+
+interface WalletData {
+    balance: number;
+    pendingBalance: number;
+    surveyBalance: number;
+    referralBalance: number;
+    completedTasks: number;
+}
+
+const initialChartData = (userCreationDate: Date, totalEarnings: number) => {
+    const months = [];
+    const now = new Date();
+    // Ensure the start date is not in the future
+    let startDate = userCreationDate > now ? now : userCreationDate;
+    
+    let currentMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+
+    while(currentMonth <= now) {
+        months.push({ month: format(currentMonth, 'MMM'), earnings: 0 });
+        currentMonth.setMonth(currentMonth.getMonth() + 1);
+    }
+
+    // If user is new or no months were generated, show at least the current month
+    if (months.length === 0) {
+       months.push({ month: format(now, 'MMM'), earnings: 0 });
+    }
+
+    // Distribute earnings, ensuring the last month has the total earnings
+    const distributedData = months.map((data, index) => {
+        const proportion = (index + 1) / months.length;
+        return {
+            ...data,
+            earnings: Math.round(totalEarnings * proportion * 0.8), // Simulate growth
+        };
+    });
+
+    if(distributedData.length > 0) {
+        distributedData[distributedData.length - 1].earnings = totalEarnings;
+    }
+    
+    return distributedData;
+};
+
+
+const chartConfig = {
+    earnings: {
+      label: "Earnings",
+      color: "hsl(var(--primary))",
+    },
+}
 
 export default function DashboardPage() {
   const user = useUser();
+  const [wallet, setWallet] = useState<WalletData | null>(null);
+  const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
+  const [chartData, setChartData] = useState<{ month: string; earnings: number; }[]>([]);
+  const [teamTree, setTeamTree] = useState<any[]>([]);
 
-  const mockTransactions = [
-    { id: '1', type: 'deposit', amount: 2500.00, currency: 'USD', status: 'completed', date: '2025-02-28', description: 'Bank Wire Transfer' },
-    { id: '2', type: 'transfer', amount: 150.00, currency: 'USD', status: 'completed', date: '2025-02-27', description: 'Sent to @alex99' },
-    { id: '3', type: 'withdrawal', amount: 500.00, currency: 'USD', status: 'completed', date: '2025-02-25', description: 'ATM Cash Withdrawal' },
-  ];
+  const totalEarnings = wallet ? wallet.balance + wallet.surveyBalance + wallet.referralBalance : 0;
+
+  useEffect(() => {
+      const visited = sessionStorage.getItem('visitedDashboard');
+      if (!visited) {
+          setIsFirstTimeUser(true);
+          sessionStorage.setItem('visitedDashboard', 'true');
+      }
+  }, []);
+
+    useEffect(() => {
+        if(user) {
+            logActivity(user, 'User is active on dashboard');
+        }
+    }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    
+    const walletRef = ref(rtdb, `wallets/${user.uid}`);
+    const teamTreeRef = ref(rtdb, `teamTrees/${user.uid}`);
+    
+    const unsubscribeWallet = onValue(walletRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            setWallet({
+                balance: data.balance ?? 0,
+                pendingBalance: data.pendingBalance ?? 0,
+                surveyBalance: data.surveyBalance ?? 0,
+                referralBalance: data.referralBalance ?? 0,
+                completedTasks: data.completedTasks ?? 0,
+            });
+        } else {
+            setWallet({ balance: 0, pendingBalance: 0, surveyBalance: 0, referralBalance: 0, completedTasks: 0 });
+        }
+    });
+
+    const unsubscribeTeamTree = onValue(teamTreeRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            setTeamTree(Object.values(data));
+        } else {
+            setTeamTree([]);
+        }
+    });
+
+    return () => {
+      unsubscribeWallet();
+      unsubscribeTeamTree();
+    }
+  }, [user]);
+  
+  useEffect(() => {
+    if (user && wallet !== null) {
+        // Use user's creation date from the auth context
+        const creationDate = new Date(user.createdAt);
+        const data = initialChartData(creationDate, totalEarnings);
+        setChartData(data);
+    }
+  }, [user, wallet, totalEarnings]);
+
+
+  const welcomeMessage = isFirstTimeUser 
+    ? `Welcome to your dashboard, ${user?.fullName?.split(' ')[0] || 'User'}!` 
+    : `Welcome back, ${user?.fullName?.split(' ')[0] || 'User'}!`;
+
+  const getInitials = (name: string | undefined) => {
+    if (!name) return 'U';
+    const names = name.split(' ');
+    if (names.length > 1) {
+      return `${names[0][0]}${names[1][0]}`.toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+  }
 
   return (
-    <div className="flex flex-col gap-6 p-4 md:p-6 lg:p-8 pb-20 md:pb-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl md:text-3xl font-bold text-foreground">Capital Portfolio</h1>
-        <p className="text-sm text-muted-foreground">Overview of your CapWallet balances and real-time operations.</p>
-      </div>
+    <div className="flex h-full flex-col p-4 md:p-6 lg:p-8 space-y-6 pb-20 md:pb-6">
+        <h1 className="text-2xl md:text-3xl font-bold text-foreground">{welcomeMessage}</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="bg-primary text-primary-foreground md:col-span-2 shadow-lg relative overflow-hidden">
-          <CardContent className="p-6 md:p-8 space-y-6">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-accent-foreground">Total Wallet Balance</span>
-              <div className="h-8 w-8 rounded-lg bg-accent flex items-center justify-center font-bold text-white">
-                C
-              </div>
-            </div>
-            <div>
-              <div className="text-4xl md:text-5xl font-extrabold tracking-tight">$12,450.80</div>
-              <p className="text-xs text-accent-foreground mt-2 flex items-center gap-1">
-                <ShieldCheck className="h-4 w-4" /> Account Verified & Encrypted
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 pt-2">
-              <Button size="sm" className="bg-accent text-white hover:bg-accent/90 gap-1.5 font-medium">
-                <ArrowDownLeft className="h-4 w-4" /> Deposit
-              </Button>
-              <Button size="sm" variant="secondary" className="gap-1.5 font-medium">
-                <ArrowUpRight className="h-4 w-4" /> Withdraw
-              </Button>
-              <Button size="sm" variant="outline" className="text-white border-white/30 hover:bg-white/10 gap-1.5 font-medium">
-                <Send className="h-4 w-4" /> Transfer
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Stats Cards */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Earnings</CardTitle>
+                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                    {wallet === null ? (
+                        <Skeleton className="h-8 w-28" />
+                    ) : (
+                        <div className="text-2xl font-bold">${totalEarnings?.toFixed(2)}</div>
+                    )}
+                    <p className="text-xs text-muted-foreground">Welcome bonus included</p>
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Pending</CardTitle>
+                    <BarChart className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                     {wallet === null ? (
+                        <Skeleton className="h-8 w-24" />
+                    ) : (
+                        <div className="text-2xl font-bold">${wallet.pendingBalance.toFixed(2)}</div>
+                    )}
+                    <p className="text-xs text-muted-foreground">From pending tasks</p>
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Completed Tasks</CardTitle>
+                    <CheckSquare className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                    {wallet === null ? (
+                        <Skeleton className="h-8 w-12" />
+                    ) : (
+                        <div className="text-2xl font-bold">{wallet.completedTasks}</div>
+                    )}
+                     <p className="text-xs text-muted-foreground">No tasks completed yet</p>
+                </CardContent>
+            </Card>
+        </div>
 
-        <Card className="flex flex-col justify-between">
-          <CardHeader>
-            <CardTitle className="text-lg">Account Summary</CardTitle>
-            <CardDescription>Key info for {user?.username || 'user'}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex justify-between items-center text-sm border-b pb-2">
-              <span className="text-muted-foreground">Account Holder</span>
-              <span className="font-semibold">{user?.fullName || 'N/A'}</span>
-            </div>
-            <div className="flex justify-between items-center text-sm border-b pb-2">
-              <span className="text-muted-foreground">Country</span>
-              <span className="font-semibold">{user?.country || 'N/A'}</span>
-            </div>
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-muted-foreground">Status</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-500/10 text-emerald-600">Active</span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-6">
+            {/* Earnings Overview */}
+            <Card className="lg:col-span-4">
+                <CardHeader>
+                    <CardTitle>Earnings Overview</CardTitle>
+                    <CardDescription>Track your earnings progress over time.</CardDescription>
+                </CardHeader>
+                <CardContent className="pl-2">
+                    <div className="w-full overflow-x-auto">
+                        <ChartContainer config={chartConfig} className="h-[250px] w-full min-w-[600px]">
+                           {chartData.length === 0 ? (
+                                <div className="flex h-full items-center justify-center">
+                                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                </div>
+                           ) : (
+                                <ResponsiveContainer>
+                                    <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                                        <CartesianGrid vertical={false} />
+                                        <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} />
+                                        <YAxis tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value) => `$${value}`} />
+                                        <Tooltip content={<ChartTooltipContent />} />
+                                        <Line dataKey="earnings" type="monotone" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                           )}
+                        </ChartContainer>
+                    </div>
+                </CardContent>
+            </Card>
 
-      {/* AI Assistant Banner */}
-      <Card className="border-accent/30 bg-gradient-to-r from-accent/10 via-secondary/40 to-background shadow-sm overflow-hidden">
-        <CardContent className="p-5 md:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="h-11 w-11 rounded-xl bg-accent text-white flex items-center justify-center font-bold shrink-0 shadow">
-              <Bot className="h-6 w-6" />
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-base text-foreground">Cap AI Financial Assistant</h3>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-accent text-white">
-                  Multi-Turn
-                </span>
-              </div>
-              <p className="text-xs md:text-sm text-muted-foreground">
-                Get real-time answers about your wallet, analyze capital allocations, or explore recovery security with Gemini.
-              </p>
-            </div>
-          </div>
-          <Link href="/dashboard/chat">
-            <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 shrink-0 font-medium text-xs">
-              <Sparkles className="h-3.5 w-3.5 text-accent" />
-              Open AI Chat
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Button>
-          </Link>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-lg">Recent Activity</CardTitle>
-            <CardDescription>Your latest financial operations.</CardDescription>
-          </div>
-          <Button variant="ghost" size="icon">
-            <RefreshCw className="h-4 w-4 text-muted-foreground" />
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {mockTransactions.map((tx) => (
-              <div key={tx.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 hover:bg-secondary/40 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className={`h-10 w-10 rounded-full flex items-center justify-center font-bold ${
-                    tx.type === 'deposit' ? 'bg-emerald-500/10 text-emerald-600' :
-                    tx.type === 'withdrawal' ? 'bg-rose-500/10 text-rose-600' :
-                    'bg-sky-500/10 text-sky-600'
-                  }`}>
-                    {tx.type === 'deposit' ? <ArrowDownLeft className="h-5 w-5" /> :
-                     tx.type === 'withdrawal' ? <ArrowUpRight className="h-5 w-5" /> :
-                     <Send className="h-5 w-5" />}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">{tx.description}</p>
-                    <p className="text-xs text-muted-foreground">{tx.date}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className={`font-bold text-sm ${
-                    tx.type === 'deposit' ? 'text-emerald-600' : 'text-foreground'
-                  }`}>
-                    {tx.type === 'deposit' ? '+' : '-'}${tx.amount.toFixed(2)}
-                  </p>
-                  <span className="text-[10px] uppercase font-semibold text-muted-foreground">{tx.status}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            {/* Team Tree */}
+            <Card className="lg:col-span-3">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5"/>TeamTree</CardTitle>
+                    <CardDescription>View your referral network.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                     <div className="flex items-center gap-4 p-2 rounded-lg bg-muted/50">
+                        <Avatar>
+                            <AvatarImage src={user?.photoURL || ''} alt={user?.fullName || 'User'} />
+                            <AvatarFallback>{getInitials(user?.fullName)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                            <p className="font-semibold">{user?.fullName}</p>
+                            <p className="text-sm text-muted-foreground">You</p>
+                        </div>
+                     </div>
+                     <div className="mt-4 max-h-[150px] overflow-y-auto space-y-2">
+                        {teamTree.length > 0 ? (
+                            teamTree.map((member: any) => (
+                                <div key={member.uid} className="flex items-center gap-4 p-2 rounded-lg border">
+                                    <Avatar className="h-8 w-8">
+                                        <AvatarImage src={member.photoURL} />
+                                        <AvatarFallback>{getInitials(member.fullName)}</AvatarFallback>
+                                    </Avatar>
+                                    <p className="font-medium text-sm">{member.fullName}</p>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="text-center p-6 text-sm text-muted-foreground">
+                                <p>No referrals yet. Share your code to grow your team!</p>
+                            </div>
+                        )}
+                     </div>
+                     <Button variant="link" className="mt-2 w-full" asChild>
+                        <Link href="/referrals#teamtree">
+                            Go to Referrals <ExternalLink className="ml-2 h-4 w-4"/>
+                        </Link>
+                    </Button>
+                </CardContent>
+            </Card>
+        </div>
     </div>
   );
 }

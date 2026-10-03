@@ -50,8 +50,8 @@ export default function AccountPage() {
     return name.substring(0, 2).toUpperCase();
   };
 
-  const maskedEmail = user?.email
-    ? `${user.email.substring(0, 3)}****@${user.email.split('@')[1]}`
+  const maskedEmail = user?.email 
+    ? `${user.email.substring(0, 3)}****@${user.email.split('@')[1]}` 
     : 'No email found';
 
   const personalInfoForm = useForm<z.infer<typeof personalInfoSchema>>({
@@ -75,7 +75,7 @@ export default function AccountPage() {
     if (!user) return;
     try {
       const userDocRef = doc(db, 'users', user.uid);
-      await updateDoc(userDocRef, {
+      await updateDoc(userDocRef, { 
         fullName: data.fullName,
         email: data.email,
         phone: data.phone,
@@ -87,12 +87,12 @@ export default function AccountPage() {
       toast({ title: "Error", description: "Could not update personal information.", variant: "destructive" });
     }
   };
-
+  
   const onPrivacySubmit = (data: z.infer<typeof privacySchema>) => {
     console.log("Privacy settings to be updated:", data);
     toast({ title: "Success", description: "Privacy settings updated." });
   };
-
+  
   const handleDownloadData = () => {
     if (!user) return;
     const userData = {
@@ -121,7 +121,7 @@ export default function AccountPage() {
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !user) return;
-
+    
     setIsUploading(true);
 
     const formData = new FormData();
@@ -300,7 +300,7 @@ export default function AccountPage() {
                   </CardContent>
               </Card>
           </div>
-
+          
           {/* Privacy Settings */}
           <Card className="lg:col-span-1 h-fit">
               <CardHeader>

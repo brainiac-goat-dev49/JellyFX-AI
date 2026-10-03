@@ -13,11 +13,9 @@ import { Header } from '@/components/dashboard/header';
 import { Loader2 } from 'lucide-react';
 import { UserContext } from '@/hooks/use-user';
 import { DashboardStateProvider } from '@/hooks/use-dashboard-state';
-import { AiChatPanel } from '@/components/dashboard/ai-chat-panel';
 import { ImpersonationBanner } from '@/components/dashboard/impersonation-banner';
 
-
-export default function DashboardLayout({
+export default function WalletLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -29,7 +27,6 @@ export default function DashboardLayout({
   const router = useRouter();
 
   useEffect(() => {
-    // Check for impersonation first
     const impersonatedUserJson = sessionStorage.getItem('impersonating_user');
     if (impersonatedUserJson) {
       const impersonatedUser = JSON.parse(impersonatedUserJson);
@@ -37,7 +34,7 @@ export default function DashboardLayout({
       setFirebaseUser(null);
       setLoading(false);
       setIsImpersonating(true);
-      return; // Stop further auth checks if impersonating
+      return;
     }
     setIsImpersonating(false);
 
@@ -52,37 +49,21 @@ export default function DashboardLayout({
   }, [router]);
 
   useEffect(() => {
-    // This effect should not run when impersonating
     if (isImpersonating || !firebaseUser) {
-        // If we are not impersonating and there's no firebase user, we are done loading.
-        if (!isImpersonating) setLoading(false);
-        return;
+      if (!isImpersonating) setLoading(false);
+      return;
     }
 
     const userDocRef = doc(db, 'users', firebaseUser.uid);
     const unsubscribeSnapshot = onSnapshot(userDocRef, (doc) => {
-    if (doc.exists()) {
-        const userData = { uid: firebaseUser.uid, ...doc.data() } as User;
-        
-        if (userData.status === 'blocked') {
-        router.replace('/blocked');
-        return;
-        } else if (userData.status === 'suspended') {
-            const liftDate = userData.suspensionLiftDate ? new Date(userData.suspensionLiftDate) : null;
-            if (liftDate && liftDate > new Date()) {
-                router.replace('/suspended');
-                return;
-            }
-        }
-        
-        setUser(userData);
-
-    } else {
+      if (doc.exists()) {
+        setUser({ uid: firebaseUser.uid, ...doc.data() } as User);
+      } else {
         setUser(null);
         auth.signOut();
         router.replace('/login');
-    }
-    setLoading(false);
+      }
+      setLoading(false);
     }, (error) => {
         console.error("Snapshot listener error:", error);
         setUser(null);
@@ -103,7 +84,7 @@ export default function DashboardLayout({
   }
 
   if (!user) {
-     // This state is brief, as the effects will redirect.
+    // This state is brief, as the effects will redirect.
     // It prevents rendering the layout for a moment before the redirect happens.
     return null;
   }
