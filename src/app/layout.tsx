@@ -6,8 +6,8 @@ import { Toaster } from "@/components/ui/toaster";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "CapWallet App",
-  description: "Secure, reliable, and modern capital wallet management.",
+  title: "CapWallet",
+  description: "Secure, reliable, and modern capital wallet management application.",
 };
 
 export default function RootLayout({

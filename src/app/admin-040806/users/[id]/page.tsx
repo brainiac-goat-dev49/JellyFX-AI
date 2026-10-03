@@ -233,13 +233,13 @@ export default function UserProfilePage() {
     };
 
     const processPendingEarnings = async (action: 'approve' | 'decline') => {
-        if (!user || !wallet || wallet.pendingBalance <= 0) return;
+        if (!user || !wallet || (wallet.pendingBalance ?? 0) <= 0) return;
         setIsProcessingPending(true);
         try {
-            await handlePendingEarnings(userId, action, declineReason, wallet.pendingBalance);
+            await handlePendingEarnings(userId, action, declineReason, wallet.pendingBalance ?? 0);
             toast({
                 title: `Earnings ${action === 'approve' ? 'Approved' : 'Declined'}`,
-                description: `The pending balance of $${wallet.pendingBalance.toFixed(2)} has been processed.`
+                description: `The pending balance of $${(wallet.pendingBalance ?? 0).toFixed(2)} has been processed.`
             });
             setDeclineReason('');
         } catch (error: any) {
@@ -378,7 +378,7 @@ export default function UserProfilePage() {
         );
     }
     
-    const UserStatusBadge = ({ status, onClick }: { status?: 'active' | 'suspended' | 'blocked', onClick?: () => void }) => {
+    const UserStatusBadge = ({ status, onClick }: { status?: 'active' | 'suspended' | 'blocked' | string, onClick?: () => void }) => {
       const isClickable = !!onClick;
       const baseClasses = isClickable ? "cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-primary" : "";
       switch (status) {
@@ -409,7 +409,7 @@ export default function UserProfilePage() {
                         <CardHeader>
                             <div className="relative mx-auto w-fit">
                                 <Avatar className="h-24 w-24 border-4 shadow-md">
-                                    <AvatarImage src={user.photoURL} />
+                                    <AvatarImage src={user.photoURL || undefined} />
                                     <AvatarFallback className="text-3xl">{getInitials(user.fullName)}</AvatarFallback>
                                 </Avatar>
                                 <DropdownMenu>
@@ -493,15 +493,15 @@ export default function UserProfilePage() {
                             <div className="flex justify-between items-center bg-muted/50 p-4 rounded-lg">
                                 <div>
                                     <p className="text-sm text-muted-foreground">Amount Pending</p>
-                                    <p className="text-3xl font-bold">${wallet?.pendingBalance.toFixed(2) || '0.00'}</p>
+                                    <p className="text-3xl font-bold">${(wallet?.pendingBalance ?? 0).toFixed(2)}</p>
                                 </div>
                                 <div className="flex gap-2">
-                                    <Button variant="outline" onClick={() => processPendingEarnings('approve')} disabled={!wallet?.pendingBalance || isProcessingPending}>
+                                    <Button variant="outline" onClick={() => processPendingEarnings('approve')} disabled={!wallet || (wallet.pendingBalance ?? 0) <= 0 || isProcessingPending}>
                                         {isProcessingPending ? <Loader2 className="animate-spin" /> : <Check className="mr-2 h-4 w-4" />} Approve
                                     </Button>
                                     <AlertDialog>
                                         <AlertDialogTrigger asChild>
-                                             <Button variant="destructive" disabled={!wallet?.pendingBalance || isProcessingPending}>
+                                             <Button variant="destructive" disabled={!wallet || (wallet.pendingBalance ?? 0) <= 0 || isProcessingPending}>
                                                 <X className="mr-2 h-4 w-4" /> Decline
                                             </Button>
                                         </AlertDialogTrigger>

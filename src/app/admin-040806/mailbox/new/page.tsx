@@ -120,9 +120,14 @@ export default function NewNotificationPage() {
 
             await sendAdminNotification({
                 target: values.target,
-                userIds: values.users || [],
-                title: `${sender}: ${values.title}`,
+                users: values.users || [],
+                senderAlias: values.senderAlias,
+                customSender: values.customSender,
+                title: values.title,
                 message: values.message,
+                schedule: values.schedule,
+                scheduledAtDate: values.scheduledAtDate,
+                scheduledAtTime: values.scheduledAtTime,
             });
 
             toast({

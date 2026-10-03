@@ -166,7 +166,7 @@ export default function AdminUsersPage() {
                                                 <TableCell>
                                                     <div className="flex items-center gap-3">
                                                         <Avatar>
-                                                            <AvatarImage src={user.photoURL} />
+                                                            <AvatarImage src={user.photoURL || undefined} />
                                                             <AvatarFallback>{getInitials(user.fullName)}</AvatarFallback>
                                                         </Avatar>
                                                         <div>

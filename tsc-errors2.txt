@@ -1,0 +1,14 @@
+src/app/admin-040806/mailbox/new/page.tsx(123,17): error TS2561: Object literal may only specify known properties, but 'userIds' does not exist in type '{ target: "broadcast" | "select"; users?: string[] | undefined; senderAlias: string; customSender?: string | undefined; title: string; message: string; schedule: boolean; scheduledAtDate?: Date | undefined; scheduledAtTime?: string | undefined; }'. Did you mean to write 'users'?
+src/app/admin-040806/users/[id]/page.tsx(236,33): error TS18048: 'wallet.pendingBalance' is possibly 'undefined'.
+src/app/admin-040806/users/[id]/page.tsx(239,72): error TS2554: Expected 3 arguments, but got 4.
+src/app/admin-040806/users/[id]/page.tsx(242,57): error TS18048: 'wallet.pendingBalance' is possibly 'undefined'.
+src/app/admin-040806/users/[id]/page.tsx(412,50): error TS2322: Type 'string | null | undefined' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/app/admin-040806/users/[id]/page.tsx(442,50): error TS2322: Type 'string | undefined' is not assignable to type '"active" | "suspended" | "blocked" | undefined'.
+  Type 'string' is not assignable to type '"active" | "suspended" | "blocked" | undefined'.
+src/app/admin-040806/users/[id]/page.tsx(496,73): error TS18048: 'wallet.pendingBalance' is possibly 'undefined'.
+src/app/admin-040806/users/page.tsx(169,74): error TS2322: Type 'string | null | undefined' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/app/surveys/page.tsx(276,62): error TS2339: Property 'progress' does not exist on type 'Survey'.
+src/app/surveys/page.tsx(278,55): error TS2339: Property 'progress' does not exist on type 'Survey'.
+src/app/surveys/page.tsx(279,100): error TS2339: Property 'progress' does not exist on type 'Survey'.
